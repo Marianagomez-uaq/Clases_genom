@@ -16,12 +16,16 @@ V(r)$color <- "pink"
 # Visualizar
 plot(r, 
      main = "Red vacía con 31 nodos", # Título
-     vertex.size = 50)
+     vertex.size = 20)
 
 
 # Para seguir trabajando usaré una matriz más chiquita
 g <- make_empty_graph(n = 4, directed = T)
+
 V(g)$color <- "pink"
+V(g)$label.color <- "black"
+E(g)$color <- "darkgreen" # Solo funciona si se corre después de que se hagan conexiones
+
 plot(g, 
      main = "Red vacía con 4 nodos", # Título
      vertex.size = 50)
@@ -42,7 +46,7 @@ plot(g,
 # ATRIBUTOS DEL NODO
 
 # Agregar un nodo nuevo con color rojo
-g <- add_vertices(g, 1, color = "purple")
+g <- add_vertices(g, 1, color = "purple") # si se agregan nuevos vertices o nodos, se pierden los datos visuales a menos que se vuelvan a especificar (colores)
 # Conectar el nuevo nodo (nodo 5)
 g <- add_edges(g, c(5,3, 4,5))
 
@@ -69,7 +73,6 @@ plot(g,
 g <- delete_edges(g, 4) # quita B→D (2,4)
 g <- add_edges(g, c(4, 2)) # D→B
 g <- add_edges(g, c(2, 5)) # C→A
-
 
 plot(g, 
      main = "Cambio en dirección de conexión",
@@ -223,13 +226,12 @@ edge_density (epr1) # Divide las conexiones que hay entre el máximo de conexion
 
 resumen_red <- function (g) {
   
-    nodo, grado_total, grado_entrada, grado_salida
+   # nodo, grado_total, grado_entrada, grado_salida
 } # PENDIENTE
 
 
 
 ##########################################################################################
-
 # RED DE AMIGOS
 
 data <- read.csv ("01_Raw_data/matriz_adyacencia_amigxs_2026.csv")
@@ -268,3 +270,69 @@ soy_popular <- function (nombre) {
   #print("Soy ", "nombre", "y tengo", "popularidad", "amigos. Mis amigos tienen en promedio", "cuantos", "amigos")
 } #algo falla con el print
 soy_popular("MARIANA")
+
+######################################################################
+# MÉTRICAS DE LA RED
+
+mean_distance(amigos) # 1.344583
+diameter(amigos) # 3
+get_diameter (amigos)
+camino <- shortest_paths(g, from = "N1", to = "N6")$vpath[[1]]
+
+distances(amigos)
+is_connected(amigos)
+
+View(amigos)
+
+transitivity (amigos)
+eccentricity (amigos)
+
+# EJERCICIOS
+
+# Ejercicio resuelto 1: Compara la distancia media de tres redes: anillo, estrella y grafo completo, todos con 30 nodos. ¿Cuál sería la mejor para difundir una noticia rápidamente? Visualiza los resultados con un gráfico de barras.
+
+estrella <- make_star (30, mode = "undirected")
+plot (estrella)
+pe <- mean_distance (estrella)
+
+anillo <- make_ring (30)
+plot (anillo)
+pa <- mean_distance (anillo)
+
+completo <- make_full_graph (30)
+plot (completo)
+pc <- mean_distance (completo)
+
+comparacion <- data.frame(Red = c("Estrella", "Anillo", "Completo"),
+                          Dist_media = c (pe, pa, pc))
+comparacion
+
+barplot(comparacion$Dist_media,
+        names.arg = comparacion$Red,
+        col = c("pink2", "lavender", "lightblue"),
+        main = "Distancia media (n = 30)",
+        ylab = "Distancia media",
+        ylim = c(0, max(comparacion$Dist_media) * 1.2) # Esta hace que el eje y se extienda un poco más arriba de la distancia más grande
+       )
+
+text(x = c(0.7, 1.9, 3.1), y = comparacion$Dist_media + 0.3,
+     labels = comparacion$Dist_media, cex = 0.9, font = 2)
+
+# EJERCICIO
+
+transitivity (estrella, type = "global") # Se refiere a si los vecinos se conectan entre sí, 0 es que no se conectan, 1 es que se conectan por completo.
+eccentricity (estrella) # Se refiere a cual es la distancia máxima de un nodo a cualquier otro nodo
+
+transitivity (anillo, type = "global")
+eccentricity (anillo)
+
+transitivity (completo, type = "global")
+eccentricity (completo)
+
+
+##############################################################################
+# Clustering y transitividad
+
+ejemplo <- graph_from_literal( # esta funcion permite agregar nodos y conexiones en un solo paso
+  A -- B, A -- C, A -- D, A -- E, B -- C, D -- E, E -- F)
+ejemplo
