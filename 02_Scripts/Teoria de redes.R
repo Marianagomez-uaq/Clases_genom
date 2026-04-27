@@ -331,8 +331,129 @@ eccentricity (completo)
 
 
 ##############################################################################
-# Clustering y transitividad
+# CLUSTERING Y TRANSITIVIDAD
 
 ejemplo <- graph_from_literal( # esta funcion permite agregar nodos y conexiones en un solo paso
   A -- B, A -- C, A -- D, A -- E, B -- C, D -- E, E -- F)
 ejemplo
+
+
+#################################################################################
+# GRADO Y DISTRIBUCIÓN
+
+# Ejercicio 1: Genera redes BA con 100, 500, 1000 y 5000 nodos. ¿Cómo cambia el grado del hub más conectado a medida que crece la red? Haz un gráfico de dispersión de n (tamaño de red) vs. grado máximo.
+
+EJ1 <- sample_gnp(500, p = 0.01)
+V(EJ1)$name <- paste0("ER_", 1:vcount(EJ1))
+
+plot(EJ1, 
+     vertex.size = degree(EJ1) * 1.5 + 3, # Esto se hace para exagerar el tamaño de los nodos y que se note bien la diferencia
+     vertex.label = NA,
+     vertex.color = "hotpink2",
+     edge.color = adjustcolor("gray50", alpha = 0.4),
+     edge.size = 100,
+     main = "Red Aleatoria (Erdős–Rényi)")
+
+p <- 0.01
+n <- 500
+grado_teorico <- p * (n - 1)
+grado_teorico
+grado_empirico <- degree (EJ1)
+mean (grado)
+
+hist (grado,
+      main = "Ejercicio 1",
+      ylab = "Frecuencia",
+      xlab = "Grado",
+      col = "pink")
+k_vals <- 0:max(grado)
+lines(k_vals, dpois(k_vals, lambda = grado_teorico), # dpois es la función de la distribución Poisson
+      col = "navy", lwd = 2.5, type = "b", pch = 16, cex = 0.8)
+
+# Ejercicio resuelto 2: Genera una red BA con 1000 nodos y ajusta una ley de potencia con poweRlaw. Reporta el exponente gamma y el valor de Xmin.
+
+g_ba <- sample_pa(100, directed = FALSE)
+V(g_ba)$name <- paste0("BA_", 1:vcount(g_ba))
+
+
+##########################################################################
+# ROBUSTEZ DE REDES
+
+plot (amigos, 
+      main = "Red de amigos",
+      vertex.size = 30, 
+      vertex.color = "lightblue",
+      edge.arrow.size = 0.5)
+
+# que pasa si me quito a mí
+
+amigos_sin_mariana <- delete_vertices(amigos, "MARIANA")
+plot (amigos_sin_mariana, 
+      main = "Red de amigos, sin Mariana",
+      vertex.size = 30, 
+      vertex.color = "pink",
+      edge.arrow.size = 0.5)
+
+mean_distance (amigos) # 1.364583
+mean_distance (amigos_sin_mariana) # 1.487179
+diameter (amigos)
+get_diameter(amigos)
+diameter (amigos_sin_mariana)
+get_diameter(amigos_sin_mariana)
+
+# que pasa si quitamos los hubs
+
+hubs <- sort (degree(amigos), decreasing = T)[1:5] # Muestra solo los primeros 5
+hubs # total
+hubs_out <- sort (degree(amigos, mode = "out"), decreasing = T)
+hubs_out
+hubs_in <- sort (degree(amigos, mode = "in"), decreasing = T)
+hubs_in
+
+amigos_sin_hubs <- delete_vertices(amigos, c("MARIANA", "CESAR", "MAYRA"))
+plot (amigos_sin_hubs, 
+      main = "Red de amigos, sin hubs",
+      vertex.size = 30, 
+      vertex.color = "pink",
+      edge.arrow.size = 0.5)
+
+mean_distance (amigos_sin_hubs) # 1.47619
+diameter (amigos_sin_hubs) # 3
+
+# ahora que pasa si quitamos a los que no son hubs
+
+amigos_con_hubs <- delete_vertices(amigos, c("FERNANDA", "DIEGO", "SAMUEL"))
+plot (amigos_con_hubs, 
+      main = "Red de amigos, con hubs",
+      vertex.size = 30, 
+      vertex.color = "pink",
+      edge.arrow.size = 0.5)
+
+mean_distance (amigos_con_hubs) # 1.388889
+diameter (amigos_con_hubs) # 3
+
+#################################################################
+# DATOS LISTOS PARA HACER PRUEBAS
+
+install.packages("igraphdata")
+library (igraphdata)
+
+data ("karate")
+plot (karate, 
+      main = "Karate")
+
+hist (sort (degree (karate), decreasing = T))
+karate_sinH <- delete_vertices (karate, c("John A", "Mr Hi", "Actor 33", "Actor 3", "Actor 2", "Actor 4", "Actor 32", "Actor 9", "Actor 14", "Actor 24"))
+plot (karate_sinH)
+
+hubs_k <- sort (degree (karate), decreasing = T)[1:10]
+karate_sinH <- delete_vertices(karate, hubs_k) # con esta y la línea anterior, se pueden eliminar los hubs sin tener que escribirlo uno por uno
+
+
+data ("yeast") # Esta ya es una red muy grande, no hacer plot pq sino se traba
+hist (sort (degree (yeast), decreasing = T))
+
+hubs_y <- sort (degree (yeast), decreasing = T)[1:2000]
+yeast_sinH <- delete_vertices (yeast, hubs_y)
+
+hist (sort (degree (yeast_sinH), decreasing = T)) # No cambia mucho, quién sabe por qué
