@@ -375,6 +375,32 @@ lines(k_vals, dpois(k_vals, lambda = grado_teorico), # dpois es la función de l
 g_ba <- sample_pa(100, directed = FALSE)
 V(g_ba)$name <- paste0("BA_", 1:vcount(g_ba))
 
+#################################################################
+# DATOS LISTOS PARA HACER PRUEBAS
+
+install.packages("igraphdata")
+library (igraphdata)
+
+data ("karate") # Esta es una red muy popular utilizada para proponer modelos de clusterización
+plot (karate, 
+      main = "Karate")
+
+hist (sort (degree (karate), decreasing = T))
+karate_sinH <- delete_vertices (karate, c("John A", "Mr Hi", "Actor 33", "Actor 3", "Actor 2", "Actor 4", "Actor 32", "Actor 9", "Actor 14", "Actor 24"))
+plot (karate_sinH)
+
+hubs_k <- sort (degree (karate), decreasing = T)[1:10]
+karate_sinH <- delete_vertices(karate, hubs_k) # con esta y la línea anterior, se pueden eliminar los hubs sin tener que escribirlo uno por uno
+
+
+data ("yeast") # Esta ya es una red muy grande, no hacer plot pq sino se traba
+hist (sort (degree (yeast), decreasing = T))
+
+hubs_y <- sort (degree (yeast), decreasing = T)[1:2000]
+yeast_sinH <- delete_vertices (yeast, hubs_y)
+
+hist (sort (degree (yeast_sinH), decreasing = T)) # No cambia mucho, quién sabe por qué
+
 
 ##########################################################################
 # ROBUSTEZ DE REDES
@@ -432,28 +458,261 @@ plot (amigos_con_hubs,
 mean_distance (amigos_con_hubs) # 1.388889
 diameter (amigos_con_hubs) # 3
 
-#################################################################
-# DATOS LISTOS PARA HACER PRUEBAS
+# Componentes
 
-install.packages("igraphdata")
-library (igraphdata)
+gigante <- function(g) {
+  comp <- components(g) # Da la cantidad de componentes y cuantos nodos tiene cada uno
+  max(comp$csize) / vcount(g) # Esto indica la proporción de nodos que tiene el componente gigante
+} # vcount es el total de vertices (nodos)
 
-data ("karate")
-plot (karate, 
-      main = "Karate")
+gigante (amigos)
+gigante (amigos_sin_mariana)
+gigante (amigos_sin_hubs)
+gigante (yeast)
 
-hist (sort (degree (karate), decreasing = T))
-karate_sinH <- delete_vertices (karate, c("John A", "Mr Hi", "Actor 33", "Actor 3", "Actor 2", "Actor 4", "Actor 32", "Actor 9", "Actor 14", "Actor 24"))
-plot (karate_sinH)
+# Simulación de fallos
 
-hubs_k <- sort (degree (karate), decreasing = T)[1:10]
-karate_sinH <- delete_vertices(karate, hubs_k) # con esta y la línea anterior, se pueden eliminar los hubs sin tener que escribirlo uno por uno
+simular_fallos <- function(g, fraccion_eliminar = 0.5, semilla = 42) { # Poner un igual permite indicar cuales son los valores por default, la función trabajará con eso si no se especifíca otro, pero quien use la función la puede cambiar
+  set.seed(semilla) # Los números no pueden ser realmente aleatorios, seed es una lista de números de las cuales toma uno el programa, hay muchas listas, se puede cambiar el seed
+  n_original <- vcount(g) # número de vertices
+  n_eliminar <- floor(n_original * fraccion_eliminar) # Floor redondea hacia abajo los números, ya que para eliminar nodos se deben dar números enteros
+  
+  # Seleccionar nodos a eliminar en orden aleatorio
+  orden_eliminacion <- sample(V(g)$name, n_eliminar) # toma nombres aleatorios (basado en la semilla) para decidir el orden
+  
+  # Registrar métricas en cada paso
+  resultados <- data.frame( # pone los resultados en un data.frame
+    eliminados = 0:n_eliminar,
+    fraccion_eliminada = (0:n_eliminar) / n_original,
+    comp_gigante = numeric(n_eliminar + 1),
+    dist_media = numeric(n_eliminar + 1),
+    diametro = numeric(n_eliminar + 1)
+  )
+  
+  g_temp <- g # Para no modificar la red original, copiamos la red en otro objeto
+  
+  for (i in 0:n_eliminar) { 
+    if (i > 0) { # va eliminando los vertices uno por uno
+      g_temp <- delete_vertices(g_temp, orden_eliminacion[i])
+    }
+    
+    resultados$comp_gigante[i + 1] <- gigante(g_temp) # usa la función que se generó antes
+    
+    # Calcular distancia media solo en el componente gigante
+    comp <- components(g_temp)
+    giant_id <- which.max(comp$csize)
+    giant_nodes <- which(comp$membership == giant_id)
+    if (length(giant_nodes) > 1) {
+      g_giant <- induced_subgraph(g_temp, giant_nodes)
+      resultados$dist_media[i + 1] <- mean_distance(g_giant)
+      resultados$diametro[i + 1] <- diameter(g_giant)
+    } else {
+      resultados$dist_media[i + 1] <- 0
+      resultados$diametro[i + 1] <- 0
+    }
+  }
+  
+  resultados
+}
+
+simular_fallos(yeast, fraccion_eliminar = 0.002)
 
 
-data ("yeast") # Esta ya es una red muy grande, no hacer plot pq sino se traba
-hist (sort (degree (yeast), decreasing = T))
+simular_ataques <- function(g, fraccion_eliminar = 0.5, semilla = 42) { # Esta es de ataque dirigidos, elimina los nodos con mayor degree primero, por lo que después de cada ataque, recalcula los degrees para volver a eliminar el que tenga mayor degree
+  set.seed(semilla)
+  n_original <- vcount(g)
+  n_eliminar <- floor(n_original * fraccion_eliminar)
+  
+  resultados <- data.frame(
+    eliminados = 0:n_eliminar,
+    fraccion_eliminada = (0:n_eliminar) / n_original,
+    comp_gigante = numeric(n_eliminar + 1),
+    dist_media = numeric(n_eliminar + 1),
+    diametro = numeric(n_eliminar + 1)
+  )
+  
+  g_temp <- g
+  
+  for (i in 0:n_eliminar) {
+    if (i > 0) {
+      # Identificar el nodo con mayor grado (recalculado)
+      deg <- degree(g_temp)
+      hub <- V(g_temp)$name[which.max(deg)]
+      g_temp <- delete_vertices(g_temp, hub)
+    }
+    
+    resultados$comp_gigante[i + 1] <- gigante(g_temp)
+    
+    # Calcular distancia media solo en el componente gigante
+    comp <- components(g_temp)
+    giant_id <- which.max(comp$csize)
+    giant_nodes <- which(comp$membership == giant_id)
+    if (length(giant_nodes) > 1) {
+      g_giant <- induced_subgraph(g_temp, giant_nodes)
+      resultados$dist_media[i + 1] <- mean_distance(g_giant)
+      resultados$diametro[i + 1] <- diameter(g_giant)
+    } else {
+      resultados$dist_media[i + 1] <- 0
+      resultados$diametro[i + 1] <- 0
+    }
+  }
+  
+  resultados
+}
 
-hubs_y <- sort (degree (yeast), decreasing = T)[1:2000]
-yeast_sinH <- delete_vertices (yeast, hubs_y)
+simular_ataques (yeast, fraccion_eliminar = 0.002)
 
-hist (sort (degree (yeast_sinH), decreasing = T)) # No cambia mucho, quién sabe por qué
+
+#############################################################################
+# MEDIDAS DE CENTRALIDAD
+
+deg <- degree (amigos)
+lay <- layout_with_fr(amigos) #esto para qué?
+plot(amigos, layout = lay,
+     vertex.size = deg * 1.5 + 3,
+     vertex.color = "pink",
+     vertex.label.cex = 0.5,
+     edge.color = adjustcolor("gray50", 0.4),
+     main = "Centralidad de grado para red de Amigos")
+
+btw_raw <- betweenness(amigos)
+btw_scaled <- (btw_raw - min(btw_raw)) / (max(btw_raw) - min(btw_raw)) * 20 + 5
+
+plot(amigos, layout = lay,
+     vertex.size = btw_scaled,
+     vertex.color = "mediumpurple",
+     vertex.label.cex = 0.5,
+     edge.color = adjustcolor("gray50", 0.4),
+     main = "Centralidad de intermediación (betweenness) para red de Amigos")
+
+eig <- eigen_centrality(amigos)$vector
+eig_scaled <- eig * 20 + 5
+
+plot(amigos, layout = lay,
+     vertex.size = eig_scaled,
+     vertex.color = "steelblue",
+     vertex.label.cex = 0.5,
+     edge.color = adjustcolor("gray50", 0.4),
+     main = "Centralidad de vector propio (eigenvector)")
+
+clo <- closeness(amigos, normalized = TRUE)
+clo_scaled <- (clo - min(clo)) / (max(clo) - min(clo)) * 20 + 5
+
+plot(amigos, layout = lay,
+     vertex.size = clo_scaled,
+     vertex.color = "tomato",
+     vertex.label.cex = 0.5,
+     edge.color = adjustcolor("gray50", 0.4),
+     main = "Centralidad de cercanía (closeness)")
+
+# Para verlas todas juntas:
+
+colores <- c("pink", "lavender", "mediumpurple", "steelblue")
+titulos <- c("Grado", "Cercanía", "Intermediación", "Vector propio")
+
+medidas <- list( # Normalizar todas las medidas a [0, 1] para escalar visualmente
+  degree(amigos, normalized = TRUE),
+  closeness(amigos, normalized = TRUE),
+  betweenness(amigos, normalized = TRUE),
+  eigen_centrality(amigos)$vector
+)
+
+par(mfrow = c(2, 2), mar = c(1, 1, 3, 1)) #esto para qué?
+
+for (i in 1:4) {
+  m <- medidas[[i]]
+  m_scaled <- m / max(m) * 20 + 5
+  
+  plot(amigos, layout = lay,
+       vertex.size = m_scaled,
+       vertex.color = colores[i],
+       vertex.label.cex = 0.45,
+       edge.color = adjustcolor("gray50", 0.3),
+       main = titulos[i])
+}
+
+# Comparación de centralidad con distintas medidas:
+
+lambda_max <- max(Re(eigen(as_adjacency_matrix(amigos, sparse = FALSE))$values)) # Recalcular alpha con parámetro seguro
+alpha_seguro <- 1 / (lambda_max + 1) # Esto es otra medida de centralidad, no es necesario para que corra, solo hay que borrar las líneas de eso
+
+centralidades <- data.frame(
+  Nodo = V(amigos)$name,
+  Grado = degree(amigos, normalized = TRUE),
+  Cercanía = closeness(amigos, normalized = TRUE),
+  Intermediación = betweenness(amigos, normalized = TRUE),
+  Eigenvector = eigen_centrality(amigos)$vector,
+  PageRank = page_rank(amigos)$vector,
+  Armónica = harmonic_centrality(amigos, normalized = TRUE),
+  Subgrafo = subgraph_centrality(amigos),
+  Hub = hub_score(amigos)$vector,
+  Alpha = alpha_centrality(amigos, alpha = alpha_seguro, exo = 1)
+)
+
+
+top10 <- order(centralidades$Grado, decreasing = TRUE)[1:10] # Mostrar top 10 por grado
+
+tabla_top10 <- centralidades[top10, ]
+tabla_top10[, -1] <- round(tabla_top10[, -1], 4)
+
+knitr::kable(
+  tabla_top10,
+  caption = "Medidas de centralidad para los 10 nodos con mayor grado",
+  row.names = FALSE
+)
+
+# Heatmap para saber si las medidas de centralidad están "de acuerdo" entre sí
+
+cor_mat <- cor(centralidades[, -1], use = "complete.obs") # Matriz de correlación (solo columnas numéricas)
+
+heatmap(cor_mat, # Visualizar como heatmap
+        col = hcl.colors(20, palette = "RdBu", rev = TRUE),
+        scale = "none",
+        margins = c(10, 10),
+        main = "Correlación entre medidas de centralidad")
+
+#########################################################################################
+# COMUNIDADES
+
+# Calcula, usando R, el logaritmo de 10,000,100,000 y 1,000,000. Calcula, también, el logaritmo del logaritmo de los números anteriores.
+
+log (10000)
+log (100000)
+log (1000000)
+
+# En igraph genera una red de 10,000 nodos y 100,000 nodos con los modelos free-scale, aleatoria y small-world. (¡¡¡¡NO, NO y NO las grafiques !!!!!) o 1000 y 100
+
+ER <- sample_gnp(10000, p = 0.04)
+SW <- sample_smallworld(1, 10000, nei = 3, p = 0.1)
+BA <- sample_pa(10000, directed = FALSE)
+
+# Usa igraph para calcular el diámetro y distancias promedio de cada una de las redes anteriores.
+
+diameter (ER)
+diameter (SW)
+diameter (BA)
+
+# Métodos de clusterización
+
+algoritmos <- list(
+  "Edge betweenness"   = cluster_edge_betweenness(amigos),
+  "Walktrap"           = cluster_walktrap(amigos),
+  "Leading eigenvector" = cluster_leading_eigen(amigos),
+  "Label propagation"  = cluster_label_prop(amigos),
+  "Infomap"            = cluster_infomap(amigos),
+  "Optimal"            = cluster_optimal(amigos)
+)
+
+seleccion <- c("Edge betweenness", "Optimal", "Label propagation", "Leading eigenvector", "Infomap", "Walktrap")
+
+par(mfrow = c(2, 3), mar = c(1, 1, 3, 1))
+
+for (nombre in seleccion) {
+  c_alg <- algoritmos[[nombre]]
+  q_alg <- modularity(amigos, membership(c_alg))
+  plot(c_alg, amigos, layout = lay,
+       vertex.size = 12, vertex.label.cex = 0.45,
+       edge.arrow.size = 0.2,
+       main = paste0(nombre, "\nQ = ", round(q_alg, 4),
+                     " | k = ", length(c_alg)))
+}
